@@ -8,6 +8,9 @@ __pycache__/
 # ignore Streamlit config
 .streamlit/
 
-# (optional) ignore Excel files if you don’t want them in repo
+# ignore local data
+data/
+
+# extra precaution, ignore Excel files
 *.xlsx
 *.xls
