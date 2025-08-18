@@ -1,0 +1,13 @@
+# ignore local virtual environment
+.venv/
+
+# ignore Python caches
+__pycache__/
+*.pyc
+
+# ignore Streamlit config
+.streamlit/
+
+# (optional) ignore Excel files if you don’t want them in repo
+*.xlsx
+*.xls

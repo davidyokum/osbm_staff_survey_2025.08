@@ -1,0 +1,953 @@
+---
+title: "OSBM Staff Survey 2024"
+author: "David Yokum"
+date: "2024-08-19"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+# # Install necessary packages if not already installed
+if (!require("readxl")) install.packages("readxl")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("stringr")) install.packages("stringr")
+if (!require("tidyr")) install.packages("tidyr")
+if (!require("knitr")) install.packages("knitr")
+if (!require("grid")) install.packages("grid")
+if (!require("kableExtra")) install.packages("kableExtra")
+if (!require("shiny")) install.packages("shiny")
+if (!require("plotly")) install.packages("plotly")
+
+# Load the libraries
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(tidyr)
+library(knitr)
+library(grid)
+library(kableExtra)
+library(shiny)
+library(plotly)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r 2024 Data Import, include=FALSE, warning=FALSE}
+# Import data
+data <- read_excel("OSBM Employee Satisfaction Survey FY 2024-25(1-56).xlsx")
+
+# Clean column names to remove leading and trailing spaces
+colnames(data) <- str_trim(colnames(data))
+
+# Remove trailing (and leading) spaces from the 'Would you re-apply for your job?' column
+data <- data %>%
+  mutate(`Would you re-apply for your job?` = str_trim(`Would you re-apply for your job?`))
+
+# Random data wrangles
+colnames(data)[18] <- "The OSBM Management Team contributes to a positive work culture." 
+colnames(data)[20] <- "What are three words that describe OSBMs culture?"
+colnames(data)[21] <- "How frequently do you receive recognition from your manager?"
+colnames(data)[24] <- "Do you find the allhands meetings valuable?"
+colnames(data)[25] <- "How often should allhands meetings be held?"
+colnames(data)[26] <- "Do you have any suggestions to improve allhands staff meetings?"
+colnames(data)[27] <- "Do you have any recommendations for how to improve the design and management of meetings that you regularly attend?"
+colnames(data)[30] <- "Section or Team Meetings"
+colnames(data)[31] <- "Informal Conversations with Coworkers"
+colnames(data)[39] <- "Which professional development training have you attended?"
+colnames(data)[40] <- "Do you feel supported in career progression planning" #"OSBM puts an emphasis on career progression planning and linking that with professional development. Do you feel supported in that regard?" 
+colnames(data)[43] <- "What appreciation activities would you be interested in that we have not done?"
+colnames(data)[44] <- "This fiscal year, did you utilize lessons and skills learned from OSBMs DEI trainings."
+colnames(data)[46] <- "How satisfied are you with OSBMs effort to be culturally diverse and an inclusive work space?" 
+colnames(data)[47] <- "What efforts, if any, would increase your satisfaction with OSBMs effort to be culturally diverse and an inclusive work space?" 
+colnames(data)[48] <- "How often do you think OSBM should host cultural celebrations?"
+colnames(data)[49] <- "Do you have any comments or recommendations about what would increase your satisfaction with the tools you use for work?"
+
+# Data wrangles on factor levels
+
+data <- data %>%
+  mutate(`How frequently do you receive recognition from your manager?` = factor(`How frequently do you receive recognition from your manager?`,levels = c("Never", "Monthly", "Weekly", "Daily")))
+
+data <- data %>%
+  mutate(`How satisfied are you with OSBMs effort to be culturally diverse and an inclusive work space?` = 
+           factor(`How satisfied are you with OSBMs effort to be culturally diverse and an inclusive work space?`, 
+                  levels = c("Very dissatisfied", "Somewhat dissatisfied", "Somewhat satisfied", "Very satisfied")))
+
+data <- data %>%
+  mutate(`How often do you think OSBM should host cultural celebrations?` = 
+           factor(`How often do you think OSBM should host cultural celebrations?`, 
+                  levels = c("Monthly", "Quarterly", "Semi-Annually", "Annually")))
+
+```
+
+```{r 2023 data import, echo=FALSE, warning=FALSE}
+# Load the 2022-2023 survey data
+data_2023 <- read_excel("OSBM Employee Satisfaction Survey FY 2022-23(1-61).xlsx")
+
+# Clean column names for the 2022-2023 data (if necessary)
+colnames(data_2023) <- str_trim(colnames(data_2023))
+
+colnames(data_2023)[32] <- "Do you feel supported in career progression planning" #"OSBM puts an emphasis on career progression planning and linking that with professional development. Do you feel supported in that regard?" 
+colnames(data_2023)[24] <- "How often should allhands meetings be held?"
+```
+
+
+```{r Set Values, include=FALSE}
+osbm_n <-101
+total_respondents <- nrow(data)
+response_rate <- round(total_respondents / osbm_n * 100, 0)
+```
+
+```{r function barchart, echo=FALSE}
+barchart <- function(data, question_var, title) {
+  
+  # Filter out NA values for the specified question variable
+  data_filtered <- data %>%
+    filter(!is.na(!!sym(question_var)))
+  
+  # Calculate the total number of responses
+  total_responses <- nrow(data_filtered)
+  
+  # Summarize counts and percentages
+  summary_data <- data_filtered %>%
+    group_by(!!sym(question_var)) %>%
+    summarize(
+      count = n(),
+      percentage = round((count / total_responses) * 100, 0)
+    ) %>%
+    complete(!!sym(question_var), fill = list(count = 0, percentage = 0))
+  
+  # Add custom hover text
+  summary_data <- summary_data %>%
+    mutate(hover_text = paste0("Count = ", count, "\nPercentage = ", round(percentage, 1), "%"))
+  
+  # Create the ggplot2 bar chart
+  p <- ggplot(summary_data, aes(x = !!sym(question_var), y = percentage, text = hover_text)) +
+    geom_bar(stat = "identity", fill = '#0072B2', color = 'black') +
+    scale_y_continuous(breaks = seq(0, 100, by = 10),  
+                       limits = c(0, 100), 
+                       labels = scales::percent_format(scale = 1)) +
+    scale_x_discrete(drop = FALSE) +
+    labs(title = title, x = NULL, y = "Percentage") +
+    theme_minimal()
+  
+  # Convert to an interactive plotly plot
+  p_interactive <- ggplotly(p, tooltip = "text")
+  
+  # Return the interactive plot
+  return(p_interactive)
+}
+```
+
+```{r function histogram, echo=FALSE}
+histogram <- function(data, question_var, title) {
+  
+  # Filter out NA values and create a clean variable for analysis
+  data_combined <- data %>%
+    filter(!is.na(!!sym(question_var)))
+
+  # Calculate the overall mean score
+  mean_score <- mean(data_combined[[question_var]], na.rm = TRUE)
+
+  # Create the ggplot2 histogram with specific binning
+  p_histogram <- ggplot(data_combined, aes(x = !!sym(question_var))) +
+    geom_histogram(aes(y = ..density.. * 100),  # Use density for y-axis to avoid stacking
+                   binwidth = 1, center = 0.5, fill = '#0072B2', color = 'black') +
+    scale_x_continuous(breaks = 0:10, 
+                       labels = c("0\nUnhappy", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10\nExtremely Happy"), 
+                       limits = c(0, 10)) +
+    scale_y_continuous(breaks = seq(0, 100, by = 10),  # Set y-axis notches at 10% intervals
+                       limits = c(0, 100), 
+                       labels = scales::percent_format(scale = 1)) +
+    labs(title = title, x = NULL, y = "Percentage") +
+    theme_minimal() +
+    geom_vline(xintercept = mean_score, color = "orange", linetype = "solid", linewidth = 1)
+
+  # Convert to an interactive plotly plot with mean line
+  p_histogram_interactive <- ggplotly(p_histogram) %>%
+    layout(
+      hovermode = "closest",
+      shapes = list(
+        list(
+          type = "line",
+          x0 = mean_score, x1 = mean_score,
+          y0 = 0, y1 = 100,
+          line = list(color = 'orange', width = 2)
+        )
+      ),
+      annotations = list(
+        list(
+          x = mean_score,  # x position at the mean score
+          y = 95,  # y position slightly below the top of the plot
+          text = paste(" Mean =", round(mean_score, 1)),
+          showarrow = FALSE,
+          xref = "x",  # Position reference based on x-axis
+          yref = "y",  # Position reference based on y-axis
+          xanchor = 'left',  # Align text to the left of the position
+          font = list(color = "orange", size = 12)  # Customize the label appearance
+        )
+      )
+    )
+
+  # Return the interactive plot
+  return(p_histogram_interactive)
+}
+
+```
+
+```{r function stacked_bar, echo=FALSE}
+stacked_bar <- function(data, questions, title = "Survey Response Distribution") {
+  
+  # Define the response levels and corresponding colors
+  response_levels <- c("Strongly Disagree", "Disagree", "Slightly Disagree", 
+                       "Slightly Agree", "Agree", "Strongly Agree")
+  
+  colors <- c("Strongly Disagree" = "#D73027", "Disagree" = "#FC8D59", 
+              "Slightly Disagree" = "#FEE08B", "Slightly Agree" = "#D9EF8B", 
+              "Agree" = "#91CF60", "Strongly Agree" = "#1A9850")
+
+  # Ensure the levels are correctly ordered in the data for each question
+  data <- data %>%
+    mutate(across(all_of(questions), ~ factor(., levels = response_levels)))
+  
+  # Combine questions into a long format for easier plotting
+  plot_data <- data %>%
+    select(all_of(questions)) %>%
+    pivot_longer(cols = everything(), names_to = "question", values_to = "response")
+  
+  # Remove NA responses
+  plot_data <- na.omit(plot_data)
+
+  # Ensure the response levels are set correctly for proper display
+  plot_data$response <- factor(plot_data$response, levels = response_levels)
+
+  # Split the text of questions into two lines
+  plot_data$question <- str_wrap(plot_data$question, width = 40)
+
+  # Calculate the counts and ensure all response levels are included
+  plot_data <- plot_data %>%
+    group_by(question, response) %>%
+    summarise(count = n(), .groups = 'drop') %>%
+    complete(question, response = response_levels, fill = list(count = 0))
+
+  # Calculate the total count for each question
+  plot_data <- plot_data %>%
+    group_by(question) %>%
+    mutate(total_count = sum(count)) %>%
+    ungroup()
+
+  # Calculate the proportions within each question
+  plot_data <- plot_data %>%
+    mutate(prop = count / total_count)
+
+  # Correct the positions for the diverging bars with the correct order
+  plot_data <- plot_data %>%
+    mutate(
+      response_position = case_when(
+        response == "Strongly Disagree" ~ -prop,
+        response == "Disagree" ~ -prop,
+        response == "Slightly Disagree" ~ -prop,
+        response == "Slightly Agree" ~ prop,
+        response == "Agree" ~ prop,
+        response == "Strongly Agree" ~ prop
+      )
+    )
+
+  # Adjust the order of levels for plotting
+  plot_data$response <- factor(plot_data$response, levels = c("Strongly Disagree", "Disagree", "Slightly Disagree",
+                                                              "Strongly Agree", "Agree", "Slightly Agree"))
+
+  # Create the diverging stacked bar chart
+  p <- ggplot(plot_data, aes(x = question, y = response_position, fill = response, 
+                             text = paste0("Count: ", count, "\nProportion: ", scales::percent(prop)))) +
+    geom_bar(stat = "identity", width = 0.7) +  # Increase bar width
+    scale_y_continuous(breaks = seq(-1, 1, by = 0.5),  # Set y-axis (flipped x-axis) notches at 20% intervals
+                       labels = scales::percent_format(scale = 100), 
+                       limits = c(-1, 1)) +
+    scale_fill_manual(values = colors) +
+    labs(title = title, x = NULL, y = "Percentage", fill = "Response") +
+    coord_flip() +
+    theme_minimal()
+
+  # Convert to an interactive plotly plot with a single-line legend and simplified theme
+  p_interactive <- ggplotly(p, tooltip = "text") %>%
+    layout(
+      yaxis = list(title = NULL),
+      xaxis = list(title = "Percentage", tickformat = "%"),
+      margin = list(t = 200, b = 50, l = 50, r = 50),  # Increase the top margin for the legend
+      legend = list(
+        orientation = "h",  # Horizontal orientation
+        x = 0.25,  # Center the legend horizontally
+        y = 1.1,  # Move the legend further above the plot area
+        xanchor = "center",
+        yanchor = "bottom",
+        font = list(
+          size = 8  # Reduce the legend text size to fit on one line
+        ),
+        title = list(text = ""),  # Remove the legend title
+        itemwidth = 0  # Optional: adjust item width to prevent text wrapping
+      )
+    )
+  
+  return(p_interactive)
+}
+
+# # Example usage:
+# stacked_bar(data, questions = c("As an OSBM employee, I have a clear understanding of my career or promotion path.",
+#                                 "I feel valued at work.",
+#                                 "I'll be able to reach my full potential at OSBM."),
+#             title = "Title")
+
+```
+
+```{r function why_answer, echo=FALSE}
+
+why_answer <- function(data, filter_var = NULL, response_var, app_title = "") {
+  
+  # Define the UI
+  ui <- fluidPage(
+    
+    # Application title
+    titlePanel(app_title),
+    
+    # Sidebar layout with input and output definitions
+    sidebarLayout(
+      sidebarPanel(
+        # Add custom CSS to fix the sidebar in place
+        tags$head(tags$style(HTML("
+          .fixed-sidebar {
+            position: fixed;
+            width: 250px;
+            top: 60px;
+            background-color: #f8f9fa;
+            padding-right: 15px;
+            height: 100%;
+            overflow-y: auto;
+            z-index: 1000;
+          }
+          .main-panel-adjust {
+            margin-left: 270px;
+            padding-left: 15px;
+          }
+          .shiny-bound-output {
+            margin-top: 20px;
+          }
+          .sticky-table-header {
+            overflow-y: auto;
+            height: 500px;
+            border: 1px solid #ddd;
+          }
+          .sticky-table-header table {
+            border-collapse: collapse;
+            width: 100%;
+            table-layout: fixed;
+          }
+          .sticky-table-header thead th {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 1000;
+            border-bottom: 1px solid #ddd;
+          }
+        "))),
+        
+        # Apply the fixed-sidebar class to the panel
+        div(class = "fixed-sidebar",
+            # Conditional panel for filter input if filter_var is provided
+            conditionalPanel(
+              condition = "input.filter_var !== ''",
+              selectInput("referral_answer", paste("", filter_var), 
+                          choices = c("Yes", "No"))
+            )
+        )
+      ),
+      
+      mainPanel(
+        class = "main-panel-adjust",  # Adjust the main panel to avoid overlap with the fixed sidebar
+        # Output the table as HTML with a sticky header
+        div(class = "sticky-table-header",
+            htmlOutput("feedback_table"))
+      )
+    )
+  )
+  
+  # Define the server logic
+  server <- function(input, output) {
+    
+    # Create the reactive data based on the selected referral answer
+    filtered_data <- reactive({
+      if (!is.null(filter_var) && filter_var != "") {
+        data %>%
+          filter(!!sym(filter_var) == input$referral_answer) %>%
+          select(!!sym(response_var))
+      } else {
+        data %>%
+          select(!!sym(response_var))
+      }
+    })
+    
+    # Render the table as kable
+    output$feedback_table <- renderUI({
+      table_data <- filtered_data()
+      
+      # Check if there's any data to display
+      if(nrow(table_data) == 0) {
+        return(h4("No responses found for the selected option."))
+      }
+      
+      # Generate the kable table as HTML with a sticky header
+      table_output <- kable(table_data, col.names = NULL, format = "html") %>%
+        kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE, position = "left") %>%
+        add_header_above(header = c(paste("Why or why not?")),
+                         bold = TRUE, font_size = 14, color = "black", background = "white") %>%
+        row_spec(0, bold = TRUE, font_size = 18, align = "1", extra_css = "background-color: white; border-bottom: none;")
+      
+      HTML(table_output)
+    })
+  }
+  
+  # Run the application 
+  shinyApp(ui = ui, server = server)
+}
+
+
+
+# # Example usage:
+# why_answer(
+#   data = data, 
+#   filter_var = "Would you refer someone to work here?", 
+#   response_var = "If you would refer someone to work at OSBM, why? If not, why not?"
+# )
+
+```
+
+
+```{r function responses, echo=FALSE}
+responses <- function(data, response_var, app_title = "") {
+  
+  # Define the UI
+  ui <- fluidPage(
+    
+    # Application title
+    titlePanel(app_title),
+    
+    # Main layout with output
+    mainPanel(
+      # Apply custom CSS to make the table header sticky
+      tags$head(tags$style(HTML("
+        .sticky-table-header {
+          overflow-y: auto;
+          height: 500px;
+          border: 1px solid #ddd;
+        }
+        .sticky-table-header table {
+          border-collapse: collapse;
+          width: 100%;
+          table-layout: fixed;
+        }
+        .sticky-table-header thead th {
+          position: sticky;
+          top: 0;
+          background: white;
+          z-index: 1000;
+          border-bottom: 1px solid #ddd;
+        }
+      "))),
+      
+      # Output the table as HTML with a sticky header
+      div(class = "sticky-table-header",
+          htmlOutput("response_table"))
+    )
+  )
+  
+  # Define the server logic
+  server <- function(input, output) {
+    
+    # Create the reactive data to hold all responses for the specified variable
+    all_responses <- reactive({
+      data %>%
+        select(!!sym(response_var))
+    })
+    
+    # Render the table as kable
+    output$response_table <- renderUI({
+      table_data <- all_responses()
+      
+      # Check if there's any data to display
+      if(nrow(table_data) == 0) {
+        return(h4("No responses found for this variable."))
+      }
+      
+      # Generate the kable table as HTML with a sticky header
+      table_output <- kable(table_data, col.names = NULL, format = "html") %>%
+        kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE, position = "left") %>%
+        add_header_above(header = c(paste("", response_var)),
+                         bold = TRUE, font_size = 14, color = "black", background = "white") %>%
+        row_spec(0, bold = TRUE, font_size = 18, align = "1", extra_css = "background-color: white; border-bottom: none;")
+      
+      HTML(table_output)
+    })
+  }
+  
+  # Run the application 
+  shinyApp(ui = ui, server = server)
+}
+
+
+# # Example
+# responses(
+#   data = data, 
+#   response_var = "If you would refer someone to work at OSBM, why? If not, why not?", 
+#   app_title = "All Responses"
+# )
+```
+
+```{r histogram overlay, echo=FALSE}
+
+histogram_overlay <- function(data1, data2, var1, var2, title) {
+  
+  # Filter out NA values and create clean variables for analysis
+  data_combined_1 <- data1 %>%
+    filter(!is.na(!!sym(var1)))
+  
+  data_combined_2 <- data2 %>%
+    filter(!is.na(!!sym(var2)))
+  
+  # Calculate the overall mean scores for both datasets
+  mean_score_1 <- mean(data_combined_1[[var1]], na.rm = TRUE)
+  mean_score_2 <- mean(data_combined_2[[var2]], na.rm = TRUE)
+  
+  # Calculate the counts and percentages for hover text
+  summary_data_1 <- data_combined_1 %>%
+    group_by(!!sym(var1)) %>%
+    summarize(
+      count = n(),
+      percentage = round((count / nrow(data_combined_1)) * 100, 0)
+    )
+  
+  summary_data_2 <- data_combined_2 %>%
+    group_by(!!sym(var2)) %>%
+    summarize(
+      count = n(),
+      percentage = round((count / nrow(data_combined_2)) * 100, 0)
+    )
+  
+  # Add hover text based on correct percentages
+  data_combined_1 <- data_combined_1 %>%
+    left_join(summary_data_1, by = setNames(var1, var1)) %>%
+    mutate(hover_text = paste0("Count = ", count, "\nPercentage = ", round(percentage, 1), "%"))
+  
+  data_combined_2 <- data_combined_2 %>%
+    left_join(summary_data_2, by = setNames(var2, var2)) %>%
+    mutate(hover_text = paste0("Count = ", count, "\nPercentage = ", round(percentage, 1), "%"))
+  
+  # Create the ggplot2 histogram for the 2024-2025 data
+  p_histogram <- ggplot(data_combined_1, aes(x = !!sym(var1), text = hover_text)) +
+    geom_histogram(aes(y = after_stat(count) / sum(after_stat(count)) * 100), 
+                   binwidth = 1, center = 0.5, fill = '#0072B2', color = 'black', alpha = 0.7) +
+    geom_histogram(data = data_combined_2, aes(x = !!sym(var2), y = after_stat(count) / sum(after_stat(count)) * 100), 
+                   binwidth = 1, center = 0.5, fill = 'grey', color = 'black', alpha = 0.3) +
+    scale_x_continuous(breaks = 0:10, 
+                       labels = c("0\nUnhappy", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10\nExtremely Happy"), 
+                       limits = c(0, 10)) +
+    scale_y_continuous(breaks = seq(0, 100, by = 10),  # Set y-axis notches at 10% intervals
+                       limits = c(0, 100), 
+                       labels = scales::percent_format(scale = 1)) +
+    labs(title = title, x = NULL, y = "Percentage") +
+    theme_minimal() +
+    geom_vline(xintercept = mean_score_1, color = "orange", linetype = "solid", linewidth = 1) +
+    geom_vline(xintercept = mean_score_2, color = "grey", linetype = "dashed", linewidth = 1)
+  
+  # Convert to an interactive plotly plot with custom hover text and mean lines
+  p_histogram_interactive <- ggplotly(p_histogram, tooltip = "text") %>%
+    layout(
+      hovermode = "closest",
+      shapes = list(
+        list(
+          type = "line",
+          x0 = mean_score_1, x1 = mean_score_1,
+          y0 = 0, y1 = 100,
+          line = list(color = 'orange', width = 2)
+        ),
+        list(
+          type = "line",
+          x0 = mean_score_2, x1 = mean_score_2,
+          y0 = 0, y1 = 100,
+          line = list(color = 'grey', width = 2, dash = 'dash')
+        )
+      ),
+      annotations = list(
+        list(
+          x = mean_score_1,  # x position at the mean score for 2024-25
+          y = 95,  # y position slightly below the top of the plot
+          text = paste("2024-25 Mean =", round(mean_score_1, 1)),
+          showarrow = FALSE,
+          xref = "x",  # Position reference based on x-axis
+          yref = "y",  # Position reference based on y-axis
+          xanchor = 'left',  # Align text to the left of the position
+          font = list(color = "orange", size = 12)  # Customize the label appearance
+        ),
+        list(
+          x = mean_score_2,  # x position at the mean score for 2022-23
+          y = 85,  # y position slightly below the mean label for 2024-25
+          text = paste("2022-23 Mean =", round(mean_score_2, 1)),
+          showarrow = FALSE,
+          xref = "x",  # Position reference based on x-axis
+          yref = "y",  # Position reference based on y-axis
+          xanchor = 'left',  # Align text to the left of the position
+          font = list(color = "grey", size = 12)  # Customize the label appearance
+        )
+      )
+    )
+  
+  # Return the interactive plot
+  return(p_histogram_interactive)
+}
+
+# Example Usage
+# histogram_overlay(data, data_2023, 
+#                   var1 = "On a scale of 1 to 10, how comfortable do you feel giving feedback to your manager?", 
+#                   var2 = "On a scale of 1 to 10, how comfortable do you feel giving feedback to your manager?", 
+#                   title = "On a scale of 1 to 10, how comfortable do you feel giving feedback to your manager?")
+```
+
+```{r function overlay barchart, echo=FALSE}
+overlay_barchart <- function(data1, data2, var1, var2, title) {
+  
+  # Summarize data1
+  summary_data1 <- data1 %>%
+    filter(!is.na(!!sym(var1))) %>%
+    group_by(!!sym(var1)) %>%
+    summarize(
+      count = n(),
+      percentage = round((count / sum(count)) * 100, 1)
+    )
+  
+  # Summarize data2
+  summary_data2 <- data2 %>%
+    filter(!is.na(!!sym(var2))) %>%
+    group_by(!!sym(var2)) %>%
+    summarize(
+      count = n(),
+      percentage = round((count / sum(count)) * 100, 1)
+    )
+  
+  # Combine the summarized data into one dataframe
+  combined_data <- full_join(
+    summary_data1 %>% rename(Percentage1 = percentage),
+    summary_data2 %>% rename(Percentage2 = percentage),
+    by = setNames(var1, var2)
+  )
+  
+  # Reshape the data for easier plotting with ggplot2
+  plot_data <- combined_data %>%
+    gather(key = "Dataset", value = "Percentage", -!!sym(var1)) %>%
+    mutate(Dataset = factor(Dataset, levels = c("Percentage1", "Percentage2")))
+  
+  # Create the overlay bar chart using ggplot2
+  p <- ggplot(plot_data, aes_string(x = var1, y = "Percentage", fill = "Dataset", text = "Percentage")) +
+    geom_bar(stat = "identity", position = "dodge", color = "black") +
+    scale_fill_manual(values = c("Percentage1" = "#0072B2", "Percentage2" = "grey")) +
+    labs(title = title, x = NULL, y = "Percentage") +
+    theme_minimal()
+  
+  # Convert the ggplot2 plot to an interactive plotly plot
+  p_interactive <- ggplotly(p, tooltip = "text")
+  
+  # Return the interactive plot
+  return(p_interactive)
+}
+
+# # Example Usage
+# overlay_barchart(
+#   data1 = data, 
+#   data2 = data_2023, 
+#   var1 = "Would you refer someone to work here?", 
+#   var2 = "Would you refer someone to work here?", 
+#   title = "Overlay of Responses: Would you refer someone to work here?"
+
+```
+
+## About
+
+In July 2024, `r total_respondents` of `r osbm_n` OSBM employees (affiliates included) completed the annual employee satisfaction survey - a response rate of `r response_rate`%. 
+
+## Employee Satisfaction
+
+```{r Happiness histogram, echo=FALSE, warning=FALSE}
+histogram(data, "On a scale of 1 to 10, how happy are you at work?", "Fig 1. On a scale of 0 to 10, how happy are you at work?")
+```
+
+```{r Referral, echo=FALSE}
+barchart(data, "Would you refer someone to work here?", "Fig 2. Would you refer someone to work here?")
+```
+
+```{r Why refer, echo=FALSE}
+why_answer(
+  data = data, 
+  filter_var = "Would you refer someone to work here?", 
+  response_var = "If you would refer someone to work at OSBM, why? If not, why not?"
+)
+```
+
+```{r echo=FALSE}
+stacked_bar(data, questions = c("As an OSBM employee, I have a clear understanding of my career or promotion path.",
+                                "I feel valued at work.",
+                                "I'll be able to reach my full potential at OSBM.",
+                                "If given the chance, I would reapply to my current job.",
+                                "If given the chance, I would reapply to my current job."),
+            title = "Fig 3. Employee Sentiment")
+```
+
+```{r echo=FALSE}
+barchart(data, "Would you re-apply for your job?", "Fig 4. Would you re-apply for your job?")
+```
+
+```{r Why repply, echo=FALSE}
+why_answer(
+  data = data, 
+  filter_var = "Would you re-apply for your job?",
+  response_var = "Why or why not? Expanding on the answer to Question 5."
+)
+```
+
+```{r working here, echo=FALSE}
+barchart(data, "Please complete this statement: I see myself working here...", "Fig 5. I see myself working here...")
+```
+
+## Organizational Culture
+
+```{r org culture - likert, echo=FALSE}
+stacked_bar(data, questions = c("My OSBM coworkers respect each other.",
+                                "I feel respected as an employee at OSBM.",
+                                "The OSBM Management Team contributes to a positive work culture.",
+                                "I know what OSBMs mission and vision are."),
+            title = "Fig 6. Employee Sentiment")
+```
+
+
+```{r three words, echo=FALSE}
+responses(data, response_var = "What are three words that describe OSBMs culture?", "What are three words that describe OSBM's culture?")
+```
+
+```{r freq praise, echo=FALSE}
+barchart(data, "How frequently do you receive recognition from your manager?", "Fig 7. How frequently do you receive recognition from your manager?")
+```
+
+```{r praise last project, echo=FALSE}
+barchart(data, "The last time you accomplished a big project, did you receive any recognition?", "Fig 8. The last time you accomplished a big project, did you receive any recognition?")
+```
+
+```{r comfort, echo=FALSE}
+histogram(data, "On a scale of 1 to 10, how comfortable do you feel giving feedback to your manager?", "Fig 9. How comfortable do you feel giving feedback to your manager?")
+```
+
+## Officewide Communication
+
+```{r all-hands valuable, echo=FALSE}
+barchart(data, "Do you find the allhands meetings valuable?", "Fig 10. Do you find the all-hands meetings valuable?")
+```
+
+```{r freq all hands, echo=FALSE}
+barchart(data, "How often should allhands meetings be held?", "Fig 11. How often should all-hands meetings be held?")
+```
+
+```{r}
+barchart(data_2023, "How often should allhands meetings be held?", "Fig 11_2023. How often should all-hands meetings be held?")
+
+```
+
+
+```{r improve all-hands, echo=FALSE}
+responses(data, response_var = "Do you have any suggestions to improve allhands staff meetings?")
+```
+
+```{r improve other mtgs, echo=FALSE}
+responses(data, response_var = "Do you have any recommendations for how to improve the design and management of meetings that you regularly attend?")
+```
+
+
+```{r going on, echo=FALSE}
+stacked_bar(data, questions = c("I know what is going on across the office."),
+            title = "Fig 12. Employee Sentiment")
+```
+
+```{r osbm info sources, echo=FALSE}
+stacked_bar(data, questions = c("All Hands Staff Meetings", 
+                                "Section or Team Meetings", 
+                                "Informal Conversations with Coworkers",
+                                "Monthly OSBM Email Newsletter",
+                                "OSBM Website",
+                                "OSBM Intranet Site",
+                                "Individual Meetings with your Supervisor",
+                                "OSBM LinkedIn Account"
+                                ),
+            title = "Fig 13. Please provide your sentiment towards the importance of the sources that you rely on for OSBM information and its activities")
+
+```
+
+```{r recs to improve comms, echo=FALSE}
+responses(data, response_var = "Do you have suggestions on how to improve communications?")
+```
+
+## Professsional Development
+
+```{r prof dev, echo=FALSE}
+barchart(data, "In the past 12 months, have you attended any professional development trainings?", "Attended professional development trainings in past 12 months?")
+
+responses(data, response_var = "Which professional development training have you attended?")
+```
+
+```{r career progression, echo=FALSE}
+barchart(data, "Do you feel supported in career progression planning", "Fig 16. Do you feel supported in career progression planning?")
+```
+
+```{r coworker interact, echo=FALSE}
+barchart(data, "In which setting do you like to interact with your coworkers for events?", "Fig 17. In which setting do you like to interact with your coworkers for events?")
+
+responses(data, "For the events that you have participated in, would you change anything about that activity?")
+
+responses(data, "What appreciation activities would you be interested in that we have not done?")
+```
+
+## Diversity, Equity, and Inclusion
+
+```{r utilize DEI, echo=FALSE}
+barchart(data, "This fiscal year, did you utilize lessons and skills learned from OSBMs DEI trainings.", "Fig 18. Did you use lessons & skills learned from OSBM's DEI trainings?")
+
+stacked_bar(data, questions = c("OSBM appropriately celebrates diversity through events and celebrations."),
+            title = "Fig 19. Employee Sentiment")
+
+barchart(data, "How satisfied are you with OSBMs effort to be culturally diverse and an inclusive work space?", "How satisfied w/ OSBM's efforts to be culturally diverse & inclusive?")
+
+responses(data, "What efforts, if any, would increase your satisfaction with OSBMs effort to be culturally diverse and an inclusive work space?")
+
+barchart(data, "How often do you think OSBM should host cultural celebrations?", "Fig 21. How often should OSBM host cultural celebrations?")
+```
+
+## General Feedback
+
+```{r general feedback, echo=FALSE}
+
+responses(data, "Do you have any comments or recommendations about what would increase your satisfaction with the tools you use for work?")
+
+responses(data, "Do you have any comments or recommendations about what would increase your satisfaction with your calendar and telework flexibilities?")
+
+responses(data, "Overall, how competitive do you feel OSBM is in terms of employee compensation, opportunities and employee appreciation compared to other agencies?")
+
+responses(data, "Do you have any comments or thoughts about the OSBM relocation effort to the Old Revenue Building or the new office/building facilities?")
+
+responses(data,"Do you have any questions, concerns, or suggestions about the upcoming Governors transition?")
+
+responses(data,"Please feel free to leave any comments, questions, or concerns as it relates to employee satisfaction at OSBM.")
+
+```
+
+## Word Cloud
+
+```{r echo=FALSE}
+# Install necessary packages if not already installed
+if (!require("tm")) install.packages("tm")
+if (!require("wordcloud2")) install.packages("wordcloud2")
+
+library(tm)
+library(wordcloud2)
+
+# List of words (your provided list)
+words <- c(
+  "Dedicated, trustworthy, thoughtful",
+  "collaborative, motivating, flexible",
+  "innovative, good values, inclusive",
+  "overloaded isolated professionals",
+  "Friendly, comfortable, goal-oriented",
+  "collaborative, innovate, chill",
+  "inclusive, flexible, open",
+  "Dedicated, curious, analytical",
+  "inclusive, motivating, intellectual",
+  "positive, driven, creative",
+  "positive, modern, appreciative",
+  "Positive, encouraging, and enthusiastic.",
+  "dedicated, thorough, inclusive.",
+  "Supportive, kind, driven",
+  "inclusive, motivating, empowering",
+  "Flexible/Fun/Diverse",
+  "curiosity, collaborative and focused",
+  "Collaborative, Smart, Fast Paced",
+  "Flexible, Friendly, Dedicated",
+  "Flexible, focused, friendly",
+  "friendly, collaborative, inviting",
+  "honest, knowledgeable, friendly",
+  "Positive, Professional, Unbalanced",
+  "Collaborative, Curious, Nerdy",
+  "Collegial, thoughtful, supportive",
+  "Supportive, Family, Opportunity",
+  "team-oriented, respectful, innovative",
+  "mission-focused, honest, ambitious",
+  "Professional, flexible, cooperative",
+  "curious, supportive, shared accountability",
+  "Supportive, respectful, public service",
+  "Collaborative, dedicated, professional",
+  "Curious, intelligent, dedicated",
+  "Hectic, Professional, Overwhelmed",
+  "professional, respectful, dedicated",
+  "collaborative, supportive, hard working",
+  "Calm, Organized, Direct",
+  "N/A",
+  "professional relaxed friendly",
+  "Positive, Open, Adaptive",
+  "Diverse, Collaboration, Accountability",
+  "Supportive Impactful Committed",
+  "team building, support, work life balance",
+  "focused, fun, friendly",
+  "friendly, flexible, collaborative",
+  "Professional, expert, proactive",
+  "Supportive, Flexible and Kind",
+  "Motivating, family environment, collaborative",
+  "Collaborative, Supportive and Curious",
+  "Professional, supportive, positive",
+  "welcoming, engaging, meaningful",
+  "Positive, Inspiring, and Challenging"
+)
+
+# Convert to a single string
+words_combined <- paste(words, collapse = " ")
+
+# Convert to lowercase and split into individual words
+word_list <- tolower(unlist(strsplit(words_combined, "\\W+")))
+
+# Remove common stop words (optional)
+word_list <- removeWords(word_list, stopwords("en"))
+
+# Generate the word cloud
+word_freq <- table(word_list)
+wordcloud2(data.frame(word = names(word_freq), freq = as.numeric(word_freq)),
+           size = 1, color = "random-light", backgroundColor = "white")
+
+```
+
+
+```{r comfort histogram overlay, echo=FALSE, include=FALSE}
+histogram_overlay(data, data_2023,
+                  var1 = "On a scale of 1 to 10, how comfortable do you feel giving feedback to your manager?",
+                  var2 = "On a scale of 1 to 10, how comfortable do you feel giving feedback to your manager?",
+                  title = "How comfortable do you feel giving feedback to your manager?")
+```
+
+```{r career planning histogram overlay, echo=FALSE}
+# histogram_overlay(data, data_2023,
+#                   var1 = "Do you feel supported in career progression planning",
+#                   var2 = "Do you feel supported in career progression planning",
+#                   title = "How comfortable do you feel giving feedback to your manager?")
+```
+
+### Decision Points
+
+1. Should the all staff meeting be bi-monthly?
+2. Should we jettison or revamp the ASBO 2-min reports during all staff? 
+2. Should a 3rd telework day be considered? 
+4. Should there be more frequent telework weeks (e.g. around holidays)?
+5. Should the OSBM newsletter include more inward facing content (or even a staff newsletter)?
+6. KW you're talking about transition tomorrow, yes? 
+7. Lot of these stats feed into strat plan - how to sync w/ strat plan update?
